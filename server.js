@@ -12,6 +12,24 @@ const PORT = process.env.PORT || 3000;
 // Middleware setup
 app.use(bodyParser.json());
 
+// - Request logging
+app.use((req, res, next) => {
+  const time = new Date().toISOString();
+  console.log(`[${time}] ${req.method} ${req.url}`);
+  next();
+});
+
+// - Authentication
+app.use((req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
+  const validApiKey = '12345';
+
+  if (!apiKey || apiKey !== validApiKey) {
+    return res.status(401).json({ message: 'Unauthorized, invalid API key' });
+  }
+  next();
+});
+
 // Sample in-memory products database
 let products = [
   {
@@ -129,41 +147,15 @@ app.delete('/api/products/:id', (req, res) => {
   }
 });
 
-// Example route implementation for GET /api/products
-app.get('/api/products', (req, res) => {
-  res.json(products);
-});
-
-// TODO: Implement custom middleware for:
-// - Request logging
-app.use((req, res, next) => {
-  const time = new Date().toISOString();
-  console.log(`[${time}] ${req.method} ${req.url}`);
-  next();
-});
-
-// - Authentication
-app.use((req, res, next) => {
-  const token = req.headers['authorization'];
-  if (!token) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  // TODO: Verify token (e.g., using JWT)
-  next();
-});
-
-// - Error handling
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ message: 'Internal server error' });
-});
-
 // Filter products by category
-app.get('/api/products/category/:category', (req, res) => {
+app.get('/api/products', (req, res) => {
   try {
-    const category = req.params.category;
-    const filteredProducts = products.filter(p => p.category === category);
-    res.json(filteredProducts);
+    const { category } = req.query;
+    let result = products;
+    if (category) {
+      result = result.filter(p => p.category.toLowerCase() === category.toLowerCase());
+    }
+    res.json(result);
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
     console.error(error);
@@ -171,18 +163,22 @@ app.get('/api/products/category/:category', (req, res) => {
 });
 
 // Pagination for products listing
-app.get('/api/products/page/:page/limit/:limit', (req, res) => {
-  try {
-    const page = parseInt(req.params.page);
-    const limit = parseInt(req.params.limit);
-    const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    const paginatedProducts = products.slice(startIndex, endIndex);
-    res.json(paginatedProducts);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-    console.error(error);
+app.get('/api/products', (req, res) => {
+  const { category, page = 1, limit = 5 } = req.query;
+  let result = products;
+
+  if (category) {
+    result = result.filter(p => p.category.toLowerCase() === category.toLowerCase());
   }
+  const startIndex = (page - 1) * limit;
+  const paginatedResult = result.slice(startIndex, startIndex + parseInt(limit));
+  
+  res.json({
+    page: parseInt(page),
+    limit: parseInt(limit),
+    total: result.length,
+    products: paginatedResult
+  });
 });
 
 // search products by name
@@ -215,6 +211,12 @@ app.get('/api/products/stats', (req, res) => {
     res.status(500).json({ message: 'Server error' });
     console.error(error);
   }
+});
+
+// - Error handling
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ message: 'Internal server error' });
 });
 
 // Start the server
